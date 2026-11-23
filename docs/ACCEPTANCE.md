@@ -5,7 +5,7 @@ Status as of 2026-11-23. Mark a row PASS only with actual execution evidence, to
 | Gate | Expected proof | State |
 |---|---|---|
 | S0: Source pinned | PlasmaTerm commit and AGPL licence copied verbatim | Source present; checksum/provenance review required |
-| S1: Host protocol | Node/Python C unit tests, malformed input and sequence wrap | Host development tests performed locally; GitHub source qualification pending |
+| S1: Host protocol | Node/Python C unit tests, malformed input and sequence wrap | Tests authored; execution not evidenced; published source must be tested |
 | S2: Simulator | Browser loads genuine Pyodide PlasmaTerm and slider movement changes frames | Not yet verified in browser |
 | S3: ASCIIomium | Windows Terminal shows live CEF/PlasmaTerm output and interactive controls | Not yet verified |
 | S4: WebSerial feasibility | CEF Alloy windowless permission flow chooses and opens CDC port | Not yet verified |
