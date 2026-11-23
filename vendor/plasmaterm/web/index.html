@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#050509">
+  <title>PlasmaTerm web-v0.3a</title>
+  <meta name="description" content="PlasmaTerm web-v0.3a with spatial LUT editor, 256-colour palette tools, and Winamp-inspired chrome.">
+  <meta property="og:title" content="PlasmaTerm web-v0.3a">
+  <meta property="og:description" content="Python/WASM plasma with hands-on browser controls.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://techrote.github.io/plasmaterm/web/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PlasmaTerm web-v0.3a">
+  <meta name="twitter:description" content="Python/WASM plasma with hands-on browser controls.">
+  <meta name="twitter:image" content="https://techrote.github.io/plasmaterm/web/og.png">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><circle cx=%228%22 cy=%228%22 r=%226%22 fill=%22%23c2ff67%22/></svg>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&amp;display=swap">
+  <style>
+    :root {
+      color-scheme: dark;
+      background: #050509;
+      --plasma-width: 538px;
+      --plasma-height: 708px;
+      --toolbar-height: 24px;
+      --chrome: #171421;
+      --line: #393249;
+      --muted: #aaa3ba;
+      --accent: #c2ff67;
+      --accent-rgb: 194 255 103;
+      --hot: #ff4fa3;
+      --danger: #ff5264;
+      --display-bg: #050509;
+      --display-bg-rgb: 5 5 9;
+      --display-contrast: #fff;
+      --energy-highlight: #c2ff67;
+      --energy-highlight-rgb: 194 255 103;
+      --energy-contrast: #101506;
+      --dock-colour: #312917;
+      --dock-foreground: #fff1b4;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { width: 100%; height: 100%; height: 100dvh; margin: 0; overflow: hidden; overscroll-behavior: none; }
+    button, input, select { font: inherit; }
+    body {
+      color: #eeeaf7;
+      background: radial-gradient(circle at 50% 38%, #1c1730 0, #090711 44rem, #050509 70rem), #050509;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    body.has-custom-background { background: var(--display-bg); }
+    .workspace { position: fixed; inset: 0; overflow: hidden; isolation: isolate; }
+    .faux-window {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      z-index: 20;
+      transform: translate(-50%, -50%);
+      overflow: hidden;
+      border: 1px solid #514763;
+      border-radius: 8px;
+      background: #050509;
+      box-shadow: 0 18px 65px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 4%) inset;
+    }
+    .faux-toolbar {
+      position: relative;
+      z-index: 45;
+      display: flex;
+      align-items: stretch;
+      width: 100%;
+      height: var(--toolbar-height);
+      padding: 0;
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(#1d1928, var(--chrome));
+      font: 600 9px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace;
+      user-select: none;
+    }
+    .toolbar-drag-region {
+      min-width: 8px;
+      flex: 1 1 auto;
+      cursor: move;
+      touch-action: none;
+    }
+    .traffic-button,
+    .integrated-button,
+    .jog-button {
+      position: relative;
+      flex: 0 0 auto;
+      height: calc(var(--toolbar-height) - 1px);
+      margin: 0;
+      border: 0;
+      border-left: 1px solid #332d40;
+      border-radius: 0;
+      color: #d9d3e5;
+      background: rgb(17 14 24 / 72%);
+      cursor: pointer;
+    }
+    .traffic-button {
+      width: var(--toolbar-height);
+      padding: 0;
+      border-left: 0;
+      border-right: 1px solid #332d40;
+      background: transparent;
+    }
+    .traffic-button::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: var(--traffic-colour, #efc25b);
+      box-shadow: 0 0 0 1px rgb(0 0 0 / 45%), 0 0 5px color-mix(in srgb, var(--traffic-colour, #efc25b) 38%, transparent);
+    }
+    .traffic-red { --traffic-colour: #ff626f; }
+    .traffic-yellow { --traffic-colour: #efc25b; }
+    .traffic-green { --traffic-colour: #8bd264; }
+    .plasma-toolbar > .traffic-button { width: 14px; border-right: 0; }
+    .plasma-toolbar > #visual-mode { border-right: 1px solid #332d40; }
+    .traffic-button:hover::after,
+    .traffic-button:focus-visible::after { box-shadow: 0 0 0 1px #fff8, 0 0 8px var(--traffic-colour, #efc25b); }
+    .integrated-button { min-width: 28px; padding: 0 6px; }
+    .integrated-button:hover,
+    .integrated-button:focus-visible,
+    .jog-button:hover,
+    .jog-button:focus-visible { color: #101506; outline: none; background: var(--accent); }
+    .integrated-button[aria-pressed="true"] { color: #101506; background: var(--accent); box-shadow: 0 0 10px rgb(var(--accent-rgb) / 55%) inset; }
+    .integrated-button:disabled { opacity: .45; cursor: not-allowed; }
+    .restore-button { color: var(--dock-foreground); background: var(--dock-colour); }
+    .title-control {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: stretch;
+      height: calc(var(--toolbar-height) - 1px);
+      border-left: 1px solid #332d40;
+      color: var(--muted);
+      background: #100e18;
+    }
+    .title-control > span { display: grid; place-items: center; min-width: 21px; padding: 0 4px; }
+    .jog-button { width: 20px; padding: 0; }
+    .title-number {
+      height: 100%;
+      margin: 0;
+      padding: 0 3px;
+      border: 0;
+      border-left: 1px solid #332d40;
+      border-radius: 0;
+      outline: none;
+      color: #f3eef8;
+      background: #09080d;
+      text-align: center;
+      appearance: textfield;
+    }
+    .title-number::-webkit-inner-spin-button,
+    .title-number::-webkit-outer-spin-button { margin: 0; appearance: none; }
+    .title-number:focus { color: #101506; background: var(--accent); }
+    .title-preset {
+      width: 22px;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-left: 1px solid #332d40;
+      border-radius: 0;
+      outline: none;
+      color: transparent;
+      background-color: #09080d;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23d9d3e5' stroke-width='1.5'/%3E%3C/svg%3E");
+      background-position: center;
+      background-repeat: no-repeat;
+      appearance: none;
+      cursor: pointer;
+    }
+    .title-preset:hover,
+    .title-preset:focus-visible { background-color: var(--accent); }
+    .title-preset option { color: #eeeaf7; background: #100e18; }
+    #pt-input { width: 42px; }
+    #bg-input { width: 58px; text-transform: uppercase; }
+    #fps-input { width: 49px; }
+    .title-number.is-invalid { box-shadow: 0 0 0 1px var(--danger) inset; }
+
+    .plasma-window { width: var(--plasma-width); height: var(--plasma-height); z-index: 30; overflow: visible; }
+    .plasma-window.is-maximized { inset: 0 !important; width: 100vw !important; height: 100dvh !important; transform: none !important; border-radius: 0; }
+    .plasma-window.is-maximized .resize-handle { display: none; }
+    .plasma-toolbar { padding-inline: 4px; border-radius: 7px 7px 0 0; }
+    .terminal-shell { position: absolute; inset: var(--toolbar-height) 0 0; overflow: hidden; border-radius: 0 0 7px 7px; background: var(--display-bg); }
+    #terminal { width: 100%; height: 100%; outline: none; touch-action: none; }
+    .xterm { height: 100%; padding: 0; }
+    #status {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      z-index: 3;
+      max-width: calc(100% - 16px);
+      padding: 6px 9px;
+      border: 1px solid #2d2940;
+      border-radius: 5px;
+      color: #c8c1db;
+      background: rgb(9 8 15 / 88%);
+      font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    #status[hidden] { display: block !important; opacity: 0; pointer-events: none; }
+    #status.error { color: #ffd2d2; border-color: #723535; }
+    .resize-handle { position: absolute; z-index: 50; width: 20px; height: 20px; padding: 0; border: 0; opacity: 0; background: transparent; transition: opacity 120ms ease; touch-action: none; }
+    .plasma-window:hover .resize-handle, .resize-handle:focus-visible, .plasma-window.is-resizing .resize-handle { opacity: 1; }
+    .resize-handle::after { content: ''; position: absolute; width: 11px; height: 11px; border-color: var(--accent); border-style: solid; }
+    .resize-handle.nw { left: -22px; top: -22px; cursor: nwse-resize; }
+    .resize-handle.ne { right: -22px; top: -22px; cursor: nesw-resize; }
+    .resize-handle.sw { left: -22px; bottom: -22px; cursor: nesw-resize; }
+    .resize-handle.se { right: -22px; bottom: -22px; cursor: nwse-resize; }
+    .resize-handle.nw::after { right: 0; bottom: 0; border-width: 0 2px 2px 0; }
+    .resize-handle.ne::after { left: 0; bottom: 0; border-width: 0 0 2px 2px; }
+    .resize-handle.sw::after { right: 0; top: 0; border-width: 2px 2px 0 0; }
+    .resize-handle.se::after { left: 0; top: 0; border-width: 2px 0 0 2px; }
+
+    .controls-window { z-index: 40; width: min(430px, calc(100vw - 8px)); height: 132px; }
+    .controls-body { height: calc(100% - var(--toolbar-height)); padding: 5px; background: linear-gradient(145deg, #09070e, #12101a); font-family: Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .key-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+    .key-row + .key-row { margin-top: 4px; }
+    .keycap {
+      position: relative;
+      min-width: 0;
+      height: 47px;
+      padding: 5px 2px 4px;
+      overflow: hidden;
+      border: 1px solid #4a4258;
+      border-radius: 4px;
+      color: #e6e0ef;
+      background: rgb(28 24 40 / 90%);
+      box-shadow: 0 3px 0 #0d0b13, 0 0 0 1px rgb(255 255 255 / 3%) inset;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+    }
+    .keycap strong { display: block; color: #817989; font: 600 7px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; }
+    .keycap small { display: grid; min-height: 22px; margin-top: 3px; overflow: visible; place-items: center; color: #f7f3fb; font: 800 10px/1.05 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0; overflow-wrap: anywhere; text-transform: uppercase; white-space: normal; }
+    .keycap:hover, .keycap:focus-visible { border-color: #837991; outline: none; }
+    .keycap.is-active { transform: translateY(2px); border-color: var(--accent); color: #101506; background: var(--accent); box-shadow: 0 1px 0 #26320f, 0 0 18px rgb(var(--accent-rgb) / 65%); }
+    .keycap.is-active small { color: #26320f; }
+    .undo-dots { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
+    .undo-dots i { width: 4px; height: 4px; border-radius: 50%; background: #45404d; }
+    .undo-button[data-depth="1"] .undo-dots i:first-child,
+    .undo-button[data-depth="2"] .undo-dots i { background: var(--hot); box-shadow: 0 0 7px rgb(255 79 163 / 80%); }
+    .undo-button:disabled { opacity: .42; cursor: not-allowed; }
+
+    .energy-window {
+      z-index: 40;
+      width: min(256px, calc(100vw - 8px));
+      height: min(318px, calc(100dvh - 8px));
+      --accent: var(--energy-highlight);
+      --accent-rgb: var(--energy-highlight-rgb);
+    }
+    .energy-body {
+      display: grid;
+      grid-template-columns: 46px 52px 65px 65px;
+      grid-template-rows: minmax(154px, 1fr) 52px 30px;
+      gap: 4px;
+      height: calc(100% - var(--toolbar-height));
+      padding: 5px;
+      overflow: hidden;
+      background: linear-gradient(145deg, #09070e, #12101a);
+      font: 600 8px/1.1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .energy-targets {
+      display: grid;
+      grid-column: 1;
+      grid-row: 1 / 4;
+      grid-template-rows: repeat(5, minmax(0, 1fr));
+      gap: 3px;
+      min-height: 0;
+    }
+    .target-led {
+      display: grid;
+      min-width: 0;
+      padding: 2px 1px;
+      place-items: center;
+      align-content: center;
+      gap: 3px;
+      border: 1px solid #4a4258;
+      border-radius: 3px;
+      color: #777080;
+      background: rgb(28 24 40 / 90%);
+      font: 700 8px/1.12 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .01em;
+      cursor: pointer;
+    }
+    .target-led::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #3d3746; }
+    .target-led[aria-pressed="true"] { color: #ddd7e7; border-color: #756b84; }
+    .target-led[aria-pressed="true"]::before { background: #a59eb0; }
+    .energy-on .target-led[aria-pressed="true"]::before { background: var(--accent); box-shadow: 0 0 0 1px var(--energy-contrast), 0 0 calc(4px + 12px * var(--energy-pulse, 0)) rgb(var(--accent-rgb) / 85%); }
+    .vertical-control,
+    .offset-control {
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+      justify-items: center;
+      overflow: hidden;
+      border: 1px solid #292433;
+      border-radius: 3px;
+      color: var(--muted);
+      background: rgb(26 22 36 / 88%);
+    }
+    .width-control { grid-column: 2; grid-row: 1; grid-template-rows: auto minmax(0, 1fr); padding: 3px 2px; }
+    .depth-control { grid-column: 3; grid-row: 1; grid-template-rows: 10px 18px minmax(0, 1fr); padding: 3px 2px; }
+    .rate-control { grid-column: 4; grid-row: 1; grid-template-rows: 10px 18px minmax(0, 1fr); padding: 3px 2px; }
+    .control-name { display: block; min-width: 0; margin: 0; color: #eee8f4; font: 800 8px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .025em; text-align: center; text-transform: uppercase; }
+    .numeric-field {
+      width: 34px;
+      height: 18px;
+      margin: 0;
+      padding: 1px;
+      border: 1px solid #4a4258;
+      border-radius: 0;
+      color: #eeeaf7;
+      background: #100e18;
+      font: 700 8px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace;
+      text-align: center;
+      appearance: textfield;
+    }
+    .numeric-field::-webkit-inner-spin-button,
+    .numeric-field::-webkit-outer-spin-button { margin: 0; appearance: none; }
+    .vertical-slider {
+      align-self: stretch;
+      width: 26px;
+      height: 100%;
+      min-height: 0;
+      margin: 0;
+      accent-color: var(--accent);
+      writing-mode: vertical-lr;
+      direction: rtl;
+    }
+    .width-heading { display: grid; min-height: 28px; place-items: start center; padding-top: 1px; color: #eee8f4; font: 800 8px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .025em; text-transform: uppercase; }
+    .vertical-range { position: relative; width: 34px; height: 100%; min-height: 0; --width-min: 0%; --width-max: 100%; }
+    .vertical-range::before { content: ''; position: absolute; left: 15px; top: 3px; bottom: 3px; width: 4px; border-radius: 4px; background: #3c3746; }
+    .width-fill { position: absolute; left: 14px; bottom: var(--width-min); width: 6px; height: calc(var(--width-max) - var(--width-min)); border-radius: 5px; background: var(--accent); box-shadow: 0 0 0 1px var(--energy-contrast), 0 0 8px rgb(var(--accent-rgb) / 55%); }
+    .vertical-range input { position: absolute; inset: 0; width: 34px; height: 100%; margin: 0; pointer-events: none; appearance: none; background: transparent; writing-mode: vertical-lr; direction: rtl; }
+    .vertical-range input::-webkit-slider-runnable-track { background: transparent; }
+    .vertical-range input::-moz-range-track { background: transparent; }
+    .vertical-range input::-webkit-slider-thumb { pointer-events: auto; appearance: none; width: 15px; height: 15px; border: 1px solid #26320f; border-radius: 50%; background: var(--accent); }
+    .vertical-range input::-moz-range-thumb { pointer-events: auto; width: 15px; height: 15px; border: 1px solid #26320f; border-radius: 50%; background: var(--accent); }
+    .offset-control { grid-column: 3 / 5; grid-row: 2; grid-template-rows: 11px 1fr; align-items: center; padding: 2px 3px; }
+    .offset-control .control-name { margin: 0; }
+    .offset-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: center; gap: 1px; width: 100%; min-width: 0; }
+    #energy-offset { min-width: 0; width: 100%; margin: 0; accent-color: var(--accent); }
+    #energy-offset-output { width: 34px; height: 18px; margin: 0; }
+    .energy-power {
+      display: grid;
+      grid-column: 2;
+      grid-row: 2 / 4;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      margin: 0;
+      padding: 0 2px;
+      border: 1px solid #8d3440;
+      border-radius: 3px;
+      color: var(--danger);
+      background: #180b10;
+      cursor: pointer;
+      font: 800 14px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .07em;
+      text-shadow: 0 0 4px rgb(255 82 100 / 95%), 0 0 12px rgb(255 82 100 / 75%);
+      text-transform: uppercase;
+    }
+    .energy-power[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: #0c1109; text-shadow: 0 0 4px rgb(var(--accent-rgb) / 100%), 0 0 14px rgb(var(--accent-rgb) / 90%); }
+    .wave-control { grid-column: 3 / 5; grid-row: 3; min-width: 0; }
+    .wave-control select {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      margin: 0;
+      padding: 0 4px;
+      border: 1px solid #4a4258;
+      border-radius: 0;
+      color: #f7f2fb;
+      background-color: #100e18;
+      background-image: none;
+      font: 800 10px/1 Orbitron, ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .02em;
+      text-align: center;
+      text-align-last: center;
+      text-transform: uppercase;
+      appearance: none;
+    }
+    .wave-control option { color: #eeeaf7; background: #100e18; text-align: center; }
+
+    @media (max-width: 700px) {
+      .plasma-window { inset: 0 !important; width: 100vw !important; height: 100dvh !important; transform: none !important; border: 0; border-radius: 0; box-shadow: none; }
+      .plasma-toolbar { height: calc(var(--toolbar-height) + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
+      .terminal-shell { inset: calc(var(--toolbar-height) + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom); }
+      .resize-handle { display: none; }
+      .controls-window, .energy-window, .lut-window { max-width: calc(100vw - 8px); max-height: calc(100dvh - 8px); }
+      .title-control > span { min-width: 18px; padding-inline: 2px; }
+      .jog-button { width: 18px; }
+      .restore-button { min-width: 18px; padding-inline: 2px; font-size: 7px; }
+      #pt-input { width: 38px; }
+      #bg-input { width: 48px; }
+      #fps-input { width: 44px; }
+    }
+    @media (max-width: 700px) and (orientation: portrait) {
+    }
+    @media (max-height: 440px) and (orientation: landscape) {
+      .controls-window { width: min(410px, calc(50vw - 8px)); }
+      .energy-window { width: min(256px, calc(50vw - 8px)); height: min(318px, calc(100dvh - 8px)); }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition-duration: 0s !important; } }
+
+    /* Winamp Modern reference: smoked graphite, citrus LCD, thin metal bevels.
+       Styling intentionally avoids third-party skin image assets. */
+    :root {
+      --chrome: #252a20;
+      --line: #525d3d;
+      --muted: #b9c59b;
+      --accent: #b7ef30;
+      --accent-rgb: 183 239 48;
+      --hot: #e7f55c;
+      --danger: #ff8c79;
+      --energy-highlight: #b7ef30;
+      --energy-highlight-rgb: 183 239 48;
+      --energy-contrast: #121910;
+      --dock-colour: #304020;
+      --dock-foreground: #d4f681;
+    }
+    body {
+      color: #e2e9cc;
+      background: radial-gradient(ellipse at 47% 36%, #343a29, #1b1d18 55%, #090a08);
+      font-family: Tahoma, Verdana, ui-sans-serif, sans-serif;
+    }
+    .faux-window {
+      border: 1px solid #5c7041;
+      border-radius: 3px;
+      background: #191c17;
+      box-shadow: 0 10px 32px #000b, inset 1px 1px #7e9060,
+        inset -1px -1px #080b07, 0 0 0 1px #050604;
+    }
+    .faux-toolbar {
+      background: linear-gradient(180deg, #3e4736 0%, #2a3027 32%, #1b211b 100%);
+      border-bottom: 1px solid #667b38;
+      color: #d7e4b0;
+      font: bold 9px/1 Tahoma, Verdana, sans-serif;
+      text-shadow: 0 1px #050704;
+    }
+    .toolbar-drag-region {
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      background-image: repeating-linear-gradient(180deg,
+        transparent 0, transparent 6px, #7b98401f 6px, #7b98401f 7px);
+    }
+    .winamp-title {
+      flex: 0 0 auto;
+      padding: 2px 5px;
+      background: #293126;
+      border: 1px solid #455b32;
+      color: #bbec64;
+      font: bold 9px/1 Tahoma, Verdana, sans-serif;
+      letter-spacing: .12em;
+      white-space: nowrap;
+      text-shadow: 0 1px #10180e, 0 0 6px #9fdd453a;
+      pointer-events: none;
+    }
+    .traffic-button, .integrated-button, .jog-button {
+      border-color: #3c5030;
+      color: #d7e7ac;
+      background: linear-gradient(#414a34, #282f24 52%, #1b2119);
+      text-shadow: 0 1px #10150b;
+    }
+    .traffic-button { background: linear-gradient(#36412e, #222a22); }
+    .traffic-button::after {
+      width: 10px;
+      height: 7px;
+      border: 1px solid #71862f;
+      border-radius: 1px;
+      background: linear-gradient(#d5f46d, #7eae27);
+      box-shadow: inset 1px 1px #f1ffb4a0, 0 0 2px #b4ed4599;
+    }
+    .traffic-red::after { background: linear-gradient(#d9db98, #7c8a65); }
+    .traffic-green::after { background: linear-gradient(#d9f5a0, #76b33b); }
+    .integrated-button:hover, .integrated-button:focus-visible,
+    .jog-button:hover, .jog-button:focus-visible {
+      background: #b4e944;
+      color: #11170a;
+      text-shadow: none;
+    }
+    .integrated-button[aria-pressed="true"] { color: #10200a; background: #a9dc2f; }
+    .restore-button { border-color: #637f32; }
+    .title-control {
+      color: #cee6a3;
+      background: #293126;
+      border-color: #526739;
+    }
+    .title-number {
+      color: #ddff7b;
+      background: #0b150b;
+      border-color: #4a6032;
+      font: bold 10px/1 Consolas, ui-monospace, monospace;
+      text-shadow: 0 0 5px #b4ff634a;
+    }
+    .title-preset { background-color: #172118; border-color: #4b6039; }
+    .title-preset option { color: #ebffbc; background: #182017; }
+    .plasma-toolbar { border-radius: 2px 2px 0 0; }
+    .terminal-shell {
+      border-radius: 0 0 2px 2px;
+      box-shadow: inset 0 0 0 2px #475638, inset 0 0 0 3px #070b06;
+    }
+    #status {
+      border: 1px solid #4e6235;
+      border-radius: 1px;
+      background: #091009e6;
+      color: #cce77c;
+      font: 10px/1.4 Consolas, monospace;
+    }
+    .controls-body, .energy-body {
+      background: linear-gradient(155deg, #20271d, #0d130d) !important;
+      font-family: Tahoma, Verdana, sans-serif;
+    }
+    .keycap {
+      border-color: #526645;
+      background: linear-gradient(#3a4331, #1f2b20);
+      box-shadow: inset 1px 1px #70875a, inset -1px -1px #0a0d09;
+    }
+    .keycap strong { color: #c9e680; font: bold 9px/1 Tahoma, Verdana, sans-serif; }
+    .keycap small { color: #f0f6cb; font: bold 9px/1.05 Tahoma, Verdana, sans-serif; }
+    .keycap.is-active { background: #b5e941; }
+    .keycap.is-active small { color: #152109; }
+    .energy-power, .target-led { border-color: #425c33; }
+    .target-led[aria-pressed="true"] { color: #d0f369; border-color: #89b944; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 1px solid #dfff65;
+      outline-offset: -1px;
+    }
+
+    /* Editor window is arranged as a titlebar, command strip, 16×16 map
+       and independently scrolling operations rack. */
+    .lut-window {
+      z-index: 40;
+      width: min(940px, calc(100vw - 8px));
+      height: min(690px, calc(100dvh - 8px));
+      color: #ddedc4;
+      overflow: hidden;
+    }
+    .lut-toolbar { overflow: hidden; }
+    .lut-toolbar .toolbar-drag-region { min-width: 85px; }
+    .lut-primary-tools { display: flex; align-items: stretch; min-width: 0; }
+    .lut-primary-tools button, .lut-command-strip button,
+    .lut-toolbox button {
+      border: 1px solid #526941;
+      border-radius: 1px;
+      padding: 2px 7px;
+      color: #dfeeb9;
+      background: linear-gradient(#404c38, #263020);
+      box-shadow: inset 1px 1px #70865a, inset -1px -1px #101810;
+      font: bold 9px Tahoma, Verdana, sans-serif;
+      text-shadow: 0 1px #081008;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .lut-primary-tools button {
+      padding: 0 7px;
+      border-width: 0 0 0 1px;
+      box-shadow: inset 1px 0 #6c8452;
+    }
+    .lut-primary-tools button:hover, .lut-command-strip button:hover,
+    .lut-toolbox button:hover, .lut-primary-tools button.is-pressed {
+      color: #141e07;
+      background: linear-gradient(#edff78, #a3da29);
+      box-shadow: inset 1px 1px #f6ffbd, inset -1px -1px #567727;
+      text-shadow: none;
+    }
+    .lut-primary-tools button[disabled], .lut-command-strip button[disabled],
+    .lut-toolbox button[disabled] { opacity: .38; cursor: not-allowed; }
+    .lut-tool-separator {
+      align-self: center;
+      flex: 0 0 1px;
+      height: 15px;
+      margin: 0 5px;
+      background: #758a47;
+    }
+    .lut-command-strip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 30px;
+      padding: 3px 7px;
+      overflow: auto hidden;
+      background: linear-gradient(#303a29, #222920);
+      border-bottom: 1px solid #5e7441;
+      scrollbar-width: thin;
+    }
+    .lut-command-label {
+      color: #c4eb70;
+      font: bold 9px Tahoma, Verdana, sans-serif;
+      letter-spacing: .12em;
+      margin-right: 4px;
+    }
+    .lut-command-strip button { height: 22px; flex: 0 0 auto; }
+    .lut-main-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 250px;
+      gap: 0;
+      height: calc(100% - var(--toolbar-height) - 30px);
+      min-height: 0;
+      padding: 5px;
+      background: #161b14;
+    }
+    .lut-bank-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: auto;
+      color: #bbdf75;
+      font: bold 8px Tahoma, Verdana, sans-serif;
+    }
+    #lut-bank {
+      width: 94px;
+      height: 19px;
+      padding: 0 3px;
+      border: 1px solid #637e41;
+      border-radius: 0;
+      color: #dcff8a;
+      background: #101a0f;
+      font: bold 9px Tahoma, Verdana, sans-serif;
+    }
+    #lut-bank:disabled { opacity: .5; }
+    @media (max-width: 470px) {
+      #lut-bank { width: 70px; font-size: 8px; }
+      .lut-bank-label { gap: 2px; }
+    }
+    .lut-grid-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 24px 20px minmax(0, 1fr) 32px;
+      background: #12180f;
+      border: 1px solid #556b3c;
+      box-shadow: inset 1px 1px #344a2c;
+    }
+    .lut-strip-heading, .lut-grid-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 7px;
+      color: #c6ec67;
+      background: #30392c;
+      border-bottom: 1px solid #566f38;
+      font: bold 9px Tahoma, Verdana, sans-serif;
+      letter-spacing: .07em;
+    }
+    #lut-active-slot { color: #e7f29c; }
+    #lut-strip {
+      display: block;
+      width: 100%;
+      height: 20px;
+      border-bottom: 2px solid #576d38;
+      image-rendering: pixelated;
+      background: #050907;
+    }
+    .lut-grid-wrap {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 0;
+      padding: 5px;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 50%, #273322, #080d07);
+    }
+    .lut-grid {
+      display: grid;
+      grid-template-columns: repeat(16, minmax(0, 1fr));
+      grid-template-rows: repeat(16, minmax(0, 1fr));
+      width: min(100%, calc(100dvh - 170px), 490px);
+      height: auto;
+      aspect-ratio: 1;
+      max-height: 100%;
+      padding: 2px;
+      gap: 1px;
+      border: 2px solid #738e48;
+      box-shadow: inset 0 0 0 1px #000, 0 0 0 1px #080c06;
+      background: #070b07;
+      cursor: crosshair;
+      touch-action: none;
+      outline: none;
+    }
+    .lut-cell {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      isolation: isolate;
+      overflow: hidden;
+    }
+    .lut-field {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #11200f;
+      border-radius: 0;
+      outline: 0;
+      font: bold clamp(5px, .58vw, 8px)/1 Consolas, ui-monospace, monospace;
+      text-align: center;
+      text-transform: uppercase;
+      cursor: inherit;
+      user-select: none;
+    }
+    .lut-field:not([readonly]) {
+      user-select: text;
+      cursor: text;
+      outline: 2px solid white;
+      outline-offset: -2px;
+    }
+    .lut-cell.is-selected::after {
+      content: '';
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      border: 2px solid #d6ff64;
+      box-shadow: inset 0 0 0 1px #0b170a, 0 0 0 1px #0b170a;
+      pointer-events: none;
+    }
+    .lut-cell.is-active::before {
+      content: '';
+      position: absolute;
+      z-index: 3;
+      inset: 4px;
+      border: 1px dashed #fff;
+      mix-blend-mode: difference;
+      pointer-events: none;
+    }
+    .lut-grid-footer {
+      justify-content: flex-start;
+      border-top: 1px solid #53663b;
+      border-bottom: none;
+      background: #293426;
+    }
+    #lut-selection-status {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font: bold 9px Consolas, monospace;
+      color: #d8ee9e;
+    }
+    #lut-selection-status[data-error="true"] { color: #ffae85; }
+    .lut-ops-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-height: 0;
+      min-width: 0;
+      margin-left: 5px;
+      padding-right: 3px;
+      overflow: hidden auto;
+      scrollbar-width: thin;
+      scrollbar-color: #718b44 #161b14;
+    }
+    .lut-toolbox {
+      display: grid;
+      gap: 6px;
+      flex: 0 0 auto;
+      padding: 7px;
+      border: 1px solid #536b3b;
+      background: linear-gradient(140deg, #2d3428, #192219);
+      box-shadow: inset 1px 1px #566b46, inset -1px -1px #101810;
+    }
+    .lut-toolbox h3 {
+      margin: 0 0 1px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #607942;
+      color: #c5f164;
+      letter-spacing: .12em;
+      font: bold 10px Tahoma, Verdana, sans-serif;
+    }
+    .lut-toolbox label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 5px;
+      color: #d8e5be;
+      font: bold 9px Tahoma, Verdana, sans-serif;
+    }
+    .lut-toolbox select, .lut-toolbox input[type=number],
+    .lut-color-row > input[type=text] {
+      height: 23px;
+      min-width: 0;
+      padding: 2px 5px;
+      border: 1px solid #5e7a3b;
+      border-radius: 0;
+      outline: none;
+      color: #e4ffae;
+      background: #10190e;
+      font: bold 10px Consolas, monospace;
+    }
+    .lut-toolbox select { width: 108px; font-size: 9px; }
+    .lut-toolbox input[type=number] { width: 54px; text-align: center; }
+    .lut-color-row {
+      display: grid;
+      grid-template-columns: 22px 56px minmax(0, 1fr);
+      gap: 5px;
+      align-items: center;
+    }
+    .lut-color-row > input { width: 100%; text-align: center; }
+    .lut-swatch {
+      width: 22px;
+      height: 22px;
+      border: 1px solid #aac36b;
+      box-shadow: 0 0 0 1px #0a1009;
+    }
+    .lut-color-row label {
+      display: flex;
+      justify-content: space-around;
+    }
+    .lut-color-row input[type=color] {
+      width: 31px;
+      height: 23px;
+      padding: 1px;
+      border: 1px solid #6b8844;
+      background: #0e190d;
+      cursor: pointer;
+    }
+    .lut-button-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+    }
+    .lut-button-grid button { min-height: 25px; padding-inline: 3px; }
+    .lut-scale-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .lut-scale-row input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: #baee48; }
+    .lut-scale-label span { color: #9dbb69; }
+    .lut-help {
+      flex: 0 0 auto;
+      margin: 0;
+      padding: 6px;
+      color: #a9c17f;
+      border: 1px solid #3e5031;
+      background: #0d140b;
+      font: 8px/1.55 Tahoma, Verdana, sans-serif;
+    }
+    @media (max-width: 720px) {
+      .lut-window {
+        width: calc(100vw - 8px);
+        height: calc(100dvh - 8px);
+      }
+      .lut-toolbar .toolbar-drag-region { min-width: 45px; padding-inline: 2px; }
+      .lut-primary-tools button { padding-inline: 4px; font-size: 8px; }
+      .lut-tool-separator { margin-inline: 2px; }
+      .lut-main-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 63%) minmax(0, 37%);
+      }
+      .lut-grid {
+        grid-template-columns: repeat(16, minmax(0, 1fr));
+        grid-template-rows: repeat(16, minmax(0, 1fr));
+        width: min(100%, calc(100dvh - 265px), 400px);
+      }
+      .lut-ops-pane {
+        display: grid;
+        align-content: start;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin: 5px 0 0;
+        padding: 0;
+        overflow: auto;
+      }
+      .lut-help { grid-column: 1/-1; }
+    }
+    @media (max-width: 470px) {
+      .winamp-title { letter-spacing: 0; font-size: 8px; }
+      .lut-ops-pane { grid-template-columns: 1fr; }
+      .lut-primary-tools button { font-size: 7px; padding-inline: 3px; }
+      .lut-toolbar .toolbar-drag-region { min-width: 38px; }
+      .lut-grid { width: min(100%, calc(100dvh - 265px), 325px); }
+      .lut-command-strip { padding-inline: 4px; }
+    }
+
+  </style>
+</head>
+<body>
+  <main class="workspace" id="workspace" aria-label="PlasmaTerm workspace">
+    <section class="faux-window controls-window" id="controls-window" aria-label="PlasmaTerm keybed">
+      <div class="faux-toolbar">
+        <button class="traffic-button traffic-yellow" id="dock-controls" type="button" aria-label="Minimize Keybed" aria-controls="controls-window" title="Minimize Keybed"></button>
+        <div class="toolbar-drag-region" data-drag-handle="controls" aria-hidden="true"><span class="winamp-title">KEYBED</span></div>
+        <button class="integrated-button" id="key-latch-plus" type="button" aria-pressed="false" title="Latch first key multiplier">+</button>
+        <button class="integrated-button" id="key-latch-plusplus" type="button" aria-pressed="false" title="Latch second key multiplier">++</button>
+        <button class="integrated-button" id="reset-keybed" type="button" title="Reset modified parameters and key multipliers">Reset</button>
+      </div>
+      <div class="controls-body">
+        <div class="key-row" id="key-row-top"></div>
+        <div class="key-row" id="key-row-home"></div>
+      </div>
+    </section>
+
+    <section class="faux-window plasma-window" id="plasma-window" aria-label="PlasmaTerm visualization">
+      <div class="faux-toolbar plasma-toolbar">
+        <button class="traffic-button traffic-red" id="global-reset" type="button" aria-label="Reset window layout and display scaling" title="Reset layout"></button>
+        <button class="traffic-button traffic-green" id="visual-mode" type="button" aria-label="Toggle full-viewport visualization" aria-pressed="false" title="Toggle full viewport"></button>
+        <div class="toolbar-drag-region" data-drag-handle="plasma" aria-hidden="true"><span class="winamp-title">PLASMATERM</span></div>
+        <button class="integrated-button restore-button" id="restore-controls" type="button" aria-controls="controls-window" aria-expanded="true" hidden>Keybed</button>
+        <button class="integrated-button restore-button" id="restore-energy" type="button" aria-controls="energy-panel" aria-expanded="true" hidden>Modulation</button>
+        <button class="integrated-button restore-button" id="restore-lut" type="button" aria-controls="lut-window" aria-expanded="false">LUT</button>
+        <div class="title-control pt-control">
+          <span>Pt</span>
+          <button class="jog-button" id="pt-down" type="button" aria-label="Decrease point size">−</button>
+          <button class="jog-button" id="pt-up" type="button" aria-label="Increase point size">+</button>
+          <input class="title-number" id="pt-input" type="number" min="6" max="200" step="1" value="24" inputmode="numeric" aria-label="Point size">
+          <select class="title-preset" id="pt-preset" aria-label="Point size presets" title="Point size presets">
+            <option value="" hidden>Preset</option>
+            <option value="12">12</option><option value="16">16</option><option value="24" selected>24</option>
+            <option value="36">36</option><option value="46">46</option><option value="64">64</option>
+          </select>
+        </div>
+        <label class="title-control bg-control" for="bg-input">
+          <span>Bg</span>
+          <input class="title-number" id="bg-input" type="text" maxlength="7" value="050509" autocomplete="off" spellcheck="false" inputmode="text" aria-label="Background colour">
+        </label>
+        <label class="title-control fps-control" for="fps-input">
+          <span>FPS</span>
+          <input class="title-number" id="fps-input" type="number" min="1" max="1000" step="1" value="60" inputmode="numeric" aria-label="Frame rate">
+          <select class="title-preset" id="fps-preset" aria-label="Frame rate presets" title="Frame rate presets">
+            <option value="" hidden>Preset</option>
+            <option value="30">30</option><option value="60" selected>60</option>
+            <option value="120">120</option><option value="144">144</option><option value="240">240</option>
+          </select>
+        </label>
+      </div>
+      <div class="terminal-shell">
+        <div id="terminal" tabindex="0" aria-label="Animated PlasmaTerm viewport. Pinch to scale characters on touch screens."></div>
+        <div id="status" role="status" aria-live="polite">Loading Python/WASM…</div>
+      </div>
+      <button class="resize-handle nw" type="button" data-corner="nw" aria-label="Resize PlasmaTerm from top left"></button>
+      <button class="resize-handle ne" type="button" data-corner="ne" aria-label="Resize PlasmaTerm from top right"></button>
+      <button class="resize-handle sw" type="button" data-corner="sw" aria-label="Resize PlasmaTerm from bottom left"></button>
+      <button class="resize-handle se" type="button" data-corner="se" aria-label="Resize PlasmaTerm from bottom right"></button>
+    </section>
+
+    <section class="faux-window energy-window" id="energy-panel" aria-label="Energy modulation">
+      <div class="faux-toolbar">
+        <button class="traffic-button traffic-yellow" id="dock-energy" type="button" aria-label="Minimize Modulation" aria-controls="energy-panel" title="Minimize Modulation"></button>
+        <div class="toolbar-drag-region" data-drag-handle="energy" aria-hidden="true"><span class="winamp-title">MODULATION</span></div>
+        <button class="integrated-button" id="reset-energy" type="button" title="Reset Energy modulation settings">Reset</button>
+      </div>
+      <div class="energy-body">
+        <div class="energy-targets" aria-label="Energy targets">
+          <button class="target-led" type="button" data-energy-target="freq-y" data-target-bit="0" aria-pressed="false">Y freq</button>
+          <button class="target-led" type="button" data-energy-target="freq-x" data-target-bit="1" aria-pressed="false">X freq</button>
+          <button class="target-led" type="button" data-energy-target="speed" data-target-bit="2" aria-pressed="true">Speed</button>
+          <button class="target-led" type="button" data-energy-target="hue-shift" data-target-bit="3" aria-pressed="false">Hue</button>
+          <button class="target-led" type="button" data-energy-target="radius" data-target-bit="4" aria-pressed="false">Radius</button>
+        </div>
+
+        <div class="vertical-control width-control" role="group" aria-labelledby="width-label">
+          <header class="width-heading" id="width-label"><span>Width</span></header>
+          <div class="vertical-range" id="energy-width-track">
+            <span class="width-fill" aria-hidden="true"></span>
+            <input id="energy-width-min" aria-label="Width minimum" type="range" orient="vertical" min="-100" max="100" step="1" value="-100">
+            <input id="energy-width-max" aria-label="Width maximum" type="range" orient="vertical" min="-100" max="100" step="1" value="100">
+          </div>
+        </div>
+
+        <label class="vertical-control depth-control">
+          <span class="control-name">AMP</span>
+          <input class="numeric-field" id="energy-depth-output" type="number" min="0" max="100" step="1" value="25" aria-label="Amplitude value">
+          <input class="vertical-slider" id="energy-depth" type="range" orient="vertical" min="0" max="100" step="1" value="25">
+        </label>
+
+        <label class="vertical-control rate-control">
+          <span class="control-name">Hz</span>
+          <input class="numeric-field" id="energy-rate-output" type="number" min="-6" max="6" step="0.05" value="0.5" aria-label="Modulation frequency in hertz">
+          <input class="vertical-slider" id="energy-rate" type="range" orient="vertical" min="-3" max="3" step="0.05" value="0.5">
+        </label>
+
+        <label class="offset-control">
+          <span class="control-name">Offset</span>
+          <span class="offset-row">
+            <input id="energy-offset" type="range" min="-100" max="100" step="1" value="0" aria-label="Energy offset">
+            <input class="numeric-field" id="energy-offset-output" type="number" min="-100" max="100" step="1" value="0" aria-label="Energy offset value">
+          </span>
+        </label>
+
+        <button class="energy-power" id="energy-power" type="button" aria-pressed="false"><span class="power-label">Off</span></button>
+        <label class="wave-control">
+          <select id="energy-wave" aria-label="Energy waveform">
+            <option value="sine">Sine</option>
+            <option value="smooth-triangle">Smooth triangle</option>
+            <option value="loop-noise">Loop noise</option>
+            <option value="wander-noise">Wander noise</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="faux-window lut-window" id="lut-window" aria-label="Spatial LUT editor" hidden>
+      <div class="faux-toolbar lut-toolbar">
+        <button class="traffic-button traffic-yellow" id="dock-lut" type="button" aria-label="Minimize LUT editor" aria-controls="lut-window" title="Minimize LUT editor"></button>
+        <div class="toolbar-drag-region" data-drag-handle="lut" aria-hidden="true"><span class="winamp-title">LUT EDITOR</span></div>
+        <div class="lut-primary-tools" role="toolbar" aria-label="Spatial LUT tools">
+          <button id="lut-select" type="button" aria-pressed="true" title="Select cells (S)">SELECT</button>
+          <button id="lut-brush" type="button" aria-pressed="false" title="Paint cells (B)">BRUSH</button>
+          <button id="lut-pick" type="button" aria-pressed="false" title="Eyedropper (I)">PICK</button>
+          <span class="lut-tool-separator"></span>
+          <button id="lut-undo" type="button" title="Undo LUT edit (Ctrl+Z)" disabled>UNDO</button>
+          <button id="lut-redo" type="button" title="Redo LUT edit (Ctrl+Y)" disabled>REDO</button>
+        </div>
+      </div>
+      <div class="lut-command-strip" role="toolbar" aria-label="LUT selection and clipboard commands">
+        <span class="lut-command-label">EDIT</span>
+        <button id="lut-all" type="button" title="Select all (Ctrl+A)">ALL</button>
+        <button id="lut-none" type="button">NONE</button>
+        <button id="lut-invert" type="button">INVERT</button>
+        <button id="lut-row" type="button">ROW</button>
+        <button id="lut-column" type="button">COL</button>
+        <span class="lut-tool-separator"></span>
+        <button id="lut-copy" type="button" title="Copy region with shape and mask">COPY</button>
+        <button id="lut-cut" type="button" data-lut-write title="Cut selection to clipboard">CUT</button>
+        <button id="lut-paste" type="button" data-lut-write title="Paste region at selection or cursor">PASTE</button>
+        <button id="lut-clear" type="button" data-lut-write title="Clear selected cells">CLEAR</button>
+      </div>
+      <div class="lut-main-body">
+        <section class="lut-grid-pane" aria-label="LUT colour map">
+          <header class="lut-strip-heading">
+            <span>PALETTE / 256 CELLS</span>
+            <label class="lut-bank-label">BANK
+              <select id="lut-bank" aria-label="Active LUT bank" disabled>
+                <option value="none">PROCEDURAL</option>
+                <option value="0">00</option><option value="1">01</option>
+                <option value="2">02</option><option value="3">03</option>
+                <option value="4">04</option><option value="5">05</option>
+                <option value="6">06</option><option value="7">07</option>
+                <option value="8">08</option><option value="9">09</option>
+              </select>
+            </label>
+            <span id="lut-active-slot">LOADING</span>
+          </header>
+          <canvas id="lut-strip" width="512" height="16" aria-label="LUT palette gradient preview"></canvas>
+          <div class="lut-grid-wrap">
+            <div id="lut-grid" class="lut-grid" role="grid" tabindex="0" aria-label="16 by 16 spatial LUT colour editor"></div>
+          </div>
+          <footer class="lut-grid-footer">
+            <span id="lut-selection-status" role="status" aria-live="polite">NO SELECTION</span>
+          </footer>
+        </section>
+        <aside class="lut-ops-pane" aria-label="LUT painting and generation controls">
+          <section class="lut-toolbox">
+            <h3>COLOUR DECK</h3>
+            <div class="lut-color-row">
+              <span id="lut-swatch-a" class="lut-swatch" aria-hidden="true"></span>
+              <label>A <input id="lut-color-a" type="color" value="#ED57AE" aria-label="Primary brush colour A"></label>
+              <input id="lut-hex-a" type="text" maxlength="7" value="ED57AE" autocomplete="off" spellcheck="false" aria-label="Colour A hexadecimal">
+            </div>
+            <div class="lut-color-row">
+              <span id="lut-swatch-b" class="lut-swatch" aria-hidden="true"></span>
+              <label>B <input id="lut-color-b" type="color" value="#32A68F" aria-label="Secondary brush colour B"></label>
+              <input id="lut-hex-b" type="text" maxlength="7" value="32A68F" autocomplete="off" spellcheck="false" aria-label="Colour B hexadecimal">
+            </div>
+            <button id="lut-swap" type="button">SWAP A / B</button>
+          </section>
+          <section class="lut-toolbox">
+            <h3>PAINT / TRANSFORM</h3>
+            <label>BRUSH SHAPE
+              <select id="lut-brush-shape" aria-label="Brush shape">
+                <option value="pixel">PIXEL</option><option value="round" selected>ROUND</option>
+                <option value="square">SQUARE</option><option value="diamond">DIAMOND</option>
+                <option value="irregular">IRREGULAR</option>
+              </select>
+            </label>
+            <label>SIZE <input id="lut-brush-size" type="number" min="1" max="5" step="1" value="2" aria-label="Brush radius 1 to 5"></label>
+            <label>GRADIENT
+              <select id="lut-gradient-mode" aria-label="Gradient direction">
+                <option value="horizontal">HORIZONTAL</option><option value="vertical">VERTICAL</option>
+                <option value="diagonal">DIAGONAL</option><option value="radial">RADIAL</option>
+              </select>
+            </label>
+            <div class="lut-button-grid">
+              <button id="lut-fill" type="button" data-lut-write>FILL A</button>
+              <button id="lut-gradient" type="button" data-lut-write>GRADIENT</button>
+              <button id="lut-flip-h" type="button" data-lut-write>FLIP H</button>
+              <button id="lut-flip-v" type="button" data-lut-write>FLIP V</button>
+              <button id="lut-rotate" type="button" data-lut-write>ROT 180</button>
+            </div>
+          </section>
+          <section class="lut-toolbox">
+            <h3>PALETTE GENERATOR</h3>
+            <label class="lut-scale-label" for="lut-random-scale">VARIATION <span>0–100%</span></label>
+            <div class="lut-scale-row">
+              <input id="lut-random-scale" type="number" min="0" max="100" step="1" value="25" inputmode="numeric" aria-label="Randomise strength percent">
+              <input id="lut-random-scale-slider" type="range" min="0" max="100" step="1" value="25" aria-label="Randomise strength slider">
+            </div>
+            <button id="randomise-lut" type="button" data-lut-write disabled>RANDOMISE 8 ANCHORS</button>
+          </section>
+          <section class="lut-toolbox">
+            <h3>PALETTE I/O</h3>
+            <div class="lut-button-grid">
+              <button id="export-lut" type="button" title="Copy complete LUT as 32 lines of 8 RRGGBB values">EXPORT</button>
+              <button id="lut-save" type="button" title="Download complete LUT as plain text">SAVE TXT</button>
+              <button id="lut-import" type="button" data-lut-write title="Import exactly 256 valid colours">IMPORT</button>
+            </div>
+          </section>
+          <p class="lut-help">DRAG SELECT · SHIFT ADD · CTRL TOGGLE · ALT SUBTRACT<br>
+            LEFT / RIGHT BRUSH = A / B · PICK = A / B<br>
+            DOUBLE-CLICK CELL TO EDIT HEX · CTRL+C/X/V/Z/Y
+          </p>
+        </aside>
+      </div>
+      <input id="lut-file" type="file" accept=".txt,.lut,.json" hidden>
+    </section>
+  </main>
+  <script>
+    if (location.protocol === 'file:') {
+      const status = document.querySelector('#status');
+      status.classList.add('error');
+      status.textContent = 'PlasmaTerm needs HTTP. From the repository root run: python -m http.server 8000';
+    }
+  </script>
+  <script type="module" src="./plasma-browser.js"></script>
+</body>
+</html>
