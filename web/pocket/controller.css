@@ -1,0 +1,16 @@
+#pocket-controller,#pocket-controller *{box-sizing:border-box}
+#pocket-controller{position:fixed;z-index:2147483600;right:9px;top:9px;width:min(340px,calc(100vw - 18px));max-height:calc(100dvh - 18px);overflow:auto;color:#daf3f2;background:#111c24f2;border:1px solid #58828e;border-radius:6px;box-shadow:0 8px 28px #000b;font:12px/1.4 Consolas,monospace;text-align:left}
+#pocket-controller header{background:#243640;padding:6px 8px;display:flex;gap:8px;align-items:center}
+#pocket-controller header strong{color:#74f8d1;flex:1;letter-spacing:.06em}
+#pocket-controller button{font:inherit;color:#d3f8ec;border:1px solid #527889;border-radius:3px;background:#223945;padding:4px 7px;cursor:pointer}
+#pocket-controller button:hover{background:#335d68}
+#pocket-controller #pp-body{padding:9px}
+#pocket-controller.collapsed #pp-body{display:none}
+#pocket-controller .pp-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+#pocket-controller label{display:block;margin:6px 0;color:#9ececd}
+#pocket-controller input{display:block;width:100%;accent-color:#76f8ca}
+#pocket-controller .pp-preview{display:flex;gap:9px;align-items:flex-start}
+#pocket-controller canvas{width:96px;height:96px;image-rendering:pixelated;border:2px solid #466573;background:#04090d}
+#pocket-controller #pp-status{flex:1;overflow-wrap:anywhere}
+#pocket-controller small{color:#a0bbc4}
+@media(max-width:520px){#pocket-controller{top:auto;bottom:8px}}
