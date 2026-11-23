@@ -36,6 +36,21 @@ The central ambition is **prove ASCIIomium as a reusable, stylised browser-appli
 - An isolated ESP-IDF demonstrator using the Waveshare reference pinout: USB D-/D+ GPIO19/20; QMI8658C I2C SDA/SCL GPIO11/12; RGB matrix data GPIO14; BOOT GPIO0.
 - Source-exact Windows validation: PlasmaTerm in standard Chromium, then ASCIIomium's CEF/terminal host, then physical ESP32 acceptance.
 
+## Run the first prototype
+
+The `feat/pocketplasma-vertical-slice` development branch now includes a source-exact PlasmaTerm web runtime snapshot, an optional controller overlay, WebSerial/localhost bridge transports and a candidate ESP32-S3-Matrix firmware project. For the live launch sequence see [docs/QUICKSTART.md](docs/QUICKSTART.md).
+
+From the repository root:
+
+```powershell
+python tools/prepare.py
+python -m http.server 8000 --directory build/site
+```
+
+Then open **http://localhost:8000/web/** in Chrome/Chromium (or use ASCIIomium's `--url` switch). The simulated IMU requires no hardware. The ESP-IDF firmware and CEF-specific device picker have **not** yet passed actual target/physical acceptance; consult [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
+
+For architecture, protocol and board authority see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PROTOCOL.md](docs/PROTOCOL.md), and [docs/HARDWARE.md](docs/HARDWARE.md).
+
 ## Status
 
 Project charter recorded on **2026-11-23**. Implementation, test evidence and current qualification status are tracked in subsequent commits/issues/PRs. Presence of code does not imply the physical test gates have passed.
